@@ -1,0 +1,19 @@
+[project]
+name = "py-analytics-r"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "jorge alarcon", email = "jorgeav527@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "jupyterlab>=4.6.5",
+]
+
+[project.scripts]
+py-analytics-r = "py_analytics_r:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
