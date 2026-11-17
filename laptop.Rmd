@@ -1,0 +1,25 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+🛠️ 1. Configuración del Entorno y Carga de Librerías
+
+```{r}
+# Instalar paquetes si no los tienes instalados
+install.packages("dplyr")
+install.packages("lubridate")
+
+library(tidyverse)
+library(lubridate)
+
+# Verificar versiones de las librerías
+print(paste("Versión de R:", R.version.string))
+print(paste("Versión de dplyr:", packageVersion("dplyr")))
+print(paste("Versión de readr:", packageVersion("readr")))
+
+# Carga de datos
+peru_df <- read_csv("peru.csv")
+print(peru_df)
+```
+

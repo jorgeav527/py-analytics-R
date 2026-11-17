@@ -17,7 +17,7 @@ Antes de comenzar con el análisis, nos aseguramos de importar todas las librer�
 
 ```{r}
 # 1. Instalación de paquetes (ejecutar en la consola o descomentar solo la primera vez)
-# install.packages(c("dplyr", "readr", "ggplot2"))
+# install.packages(c("dplyr", "readr", "ggplot2", "styler"))
 ```
 
 ```{r}
@@ -254,4 +254,190 @@ peru_df %>% filter(grepl("chapo", CAPITAL, ignore.case = TRUE))
 
 Resumen de datos a nivel regional para revelar patrones macroeconómicos.
 
+```{r}
+## Agregación de población por región y nivel económico
+resumen <- peru_df %>%
+  group_by(REGION, `NIVEL ECONOMICO`) %>%
+  summarise(
+    `POBLACION (millones)` = sum(`POBLACION (millones)`),
+    .groups = "drop"
+  )
+
+resumen
+```
+
+### Ordenamiento y Creación de Atributos
+
+Cálculo de la densidad poblacional y ordenamiento de los resultados para identificar valores atípicos clave.
+
+```{r}
+## Ordenar por población de mayor a menor
+peru_df %>% arrange(desc(`POBLACION (millones)`))
+```
+```{r}
+## Con dplyr
+peru_df %>% arrange(rownames(.))
+```
+
+```{r}
+## Con dplyr (select + sort sobre los nombres de columna)
+peru_df %>% select(sort(names(.)))
+```
+
+### Multi-Agregación
+
+Aplicación de múltiples funciones estadísticas simultáneamente para explorar los límites de los datos.
+
+```{r}
+## Estadísticas en lote para múltiples columnas
+peru_df %>%
+  summarise(across(
+    c(`POBLACION (millones)`, PIB),
+    list(min = min, max = max, mean = mean)
+  ))
+```
+```{r}
+## Segmentación avanzada de información por REGION
+segmentacion_region <- peru_df %>%
+  group_by(REGION) %>%
+  summarise(
+    POBLACION_mean = mean(`POBLACION (millones)`),
+    POBLACION_sum  = sum(`POBLACION (millones)`),
+    POBLACION_std  = sd(`POBLACION (millones)`),
+    PIB_mean       = mean(PIB),
+    PIB_max        = max(PIB),
+    ALTITUD_mean   = mean(`ALTITUD (msnm)`)
+  )
+
+segmentacion_region
+```
+
+```{r}
+## Definir función de agregación personalizada
+promedio_con_constante <- function(columna, k = 1.2) {
+  # Multiplicamos cada elemento por k, y al resultado le sacamos el promedio
+  mean(columna * k)
+}
+
+## Aplicar la función personalizada a varias columnas con k = 1.5
+agg_personalizado <- peru_df %>%
+  summarise(across(
+    c(`POBLACION (millones)`, PIB),
+    ~ promedio_con_constante(.x, k = 1.5)
+  ))
+
+agg_personalizado
+```
+
+### Análisis de Correlación
+
+Un análisis de correlación es una herramienta estadística que nos permite medir la fuerza y la dirección de la relación lineal entre dos variables numéricas sin asumir necesariamente que una causa a la otra.
+
+
+```{r}
+## Definir la lista de columnas estrictamente numéricas seleccionadas
+columnas_numericas <- c(
+  "POBLACION (millones)",
+  "SUPERFICIE (km²)",
+  "PROVINCIAS",
+  "ALTITUD (msnm)",
+  "PIB",
+  "DENSIDAD (hab/km²)"
+)
+
+## Filtrar el DataFrame
+peru_numerico_filtrado <- peru_df %>% select(all_of(columnas_numericas))
+
+## 1. Calcular la matriz de correlación
+## Pearson ("pearson" — el estándar):
+## Qué mide: La relación lineal exacta entre dos variables numéricas (qué tanto se ajustan los puntos a una línea recta).
+## Sensibilidad: Es muy sensible a valores atípicos (outliers). Por ejemplo, en Perú, Lima tiene una población y un PIB desproporcionadamente altos respecto al resto de departamentos, lo que puede "jalar" la correlación de Pearson hacia arriba.
+
+## Spearman ("spearman" — basado en rankings):
+## Qué mide: La relación monótona (si una sube, la otra también sube, aunque no sea en línea recta perfecta). En lugar de usar los valores reales, ordena los datos del 1 al 25 (puestos/rankings) y calcula la correlación sobre esos puestos.
+## Cuándo usarlo: Cuando tienes outliers fuertes (como Lima) o relaciones curvas (ej. exponenciales).
+
+## Kendall ("kendall" — concordancia de pares):
+## Qué mide: Qué porcentaje de pares de observaciones van en la misma dirección frente a los que van en dirección opuesta.
+## Cuándo usarlo: En muestras pequeñas (como los 24 departamentos + Callao = 25 filas) o cuando hay muchos empates en los valores.
+matriz_correlacion <- cor(peru_numerico_filtrado, method = "pearson")
+round(matriz_correlacion, 2)
+```
+
+```{r}
+## Prueba de significancia entre Población y PIB
+## La prueba de significancia responde a la pregunta: "¿Esta correlación que veo en mis 25 filas es real en el fenómeno, o pudo haber salido por pura casualidad?"
+
+## - Si el p-value es menor a 0.05 (5%): Se dice que la correlación es estadísticamente significativa (hay evidencia sólida de que la relación existe y no es azar).
+## - Si el p-value es mayor a 0.05: No hay suficiente evidencia para asegurar que la relación sea real; podría ser coincidencia de la muestra.
+resultado <- cor.test(peru_df$`POBLACION (millones)`, peru_df$PIB, method = "pearson")
+resultado
+
+## Si solo quieres extraer el número exacto del p-value:
+resultado$p.value
+```
+
+```{r}
+## 2. Pruebas de hipótesis (t-test para dos muestras independientes)
+## Hipótesis Nula (H0): El PIB promedio de la Costa y de la Sierra es igual.
+## Hipótesis Alternativa (H1): El PIB promedio de la Costa y de la Sierra es diferente.
+
+## Filtrar muestras válidas
+pib_costa  <- peru_df %>% filter(REGION == "Costa") %>% pull(PIB)
+pib_sierra <- peru_df %>% filter(REGION == "Sierra") %>% pull(PIB)
+
+## Ejecutar t-test de Welch (var.equal = FALSE es el valor por defecto en R)
+resultado_ttest <- t.test(pib_costa, pib_sierra, var.equal = FALSE)
+
+cat(sprintf("Estadístico t: %.4f\n", resultado_ttest$statistic))
+cat(sprintf("Valor p (p-value): %.6f\n", resultado_ttest$p.value))
+
+if (resultado_ttest$p.value < 0.05) {
+  print("Rechazamos la hipótesis nula (H0). Existe una diferencia estadísticamente significativa entre el PIB de la Costa y la Sierra.")
+} else {
+  print("No se puede rechazar la hipótesis nula (H0). No hay evidencia suficiente para afirmar que los PIB promedio sean distintos.")
+}
+```
+
+## 🛠️ 4. Integración de Datos (Joins y Merges)
+
+Combinación de nuestro conjunto de datos primario con datos de proyectos auxiliares utilizando diferentes estrategias de unión.
+
+```{r}
+## Convertir el índice (rownames) en una columna normal llamada "DEPARTAMENTO"
+library(tibble)
+
+peru_df <- peru_df %>%
+  rownames_to_column(var = "DEPARTAMENTO")
+
+peru_df
+```
+
+```{r}
+library(tibble)
+
+## Conjunto de datos de proyectos auxiliares
+proyectos_df <- tibble(
+  DEPARTAMENTO = c("Arequipa", "Lima", "Cusco", "Piura", "Loreto", "Extranjero"),
+  `INVERSION (millones)` = c(1500, 4200, 850, 600, 300, 5000),
+  TIPO_PRO = c(
+    "Minería",
+    "Transporte",
+    "Energía",
+    "Agricultura",
+    "Ambiental",
+    "Comercio"
+  ),
+  ESTADO = c(
+    "Ejecución",
+    "Planificación",
+    "Ejecución",
+    "Finalizado",
+    "Suspendido",
+    "Nuevo"
+  )
+)
+
+proyectos_df
+```
 
