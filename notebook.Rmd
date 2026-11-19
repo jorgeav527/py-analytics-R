@@ -333,6 +333,20 @@ agg_personalizado
 
 Un análisis de correlación es una herramienta estadística que nos permite medir la fuerza y la dirección de la relación lineal entre dos variables numéricas sin asumir necesariamente que una causa a la otra.
 
+### Métodos de la matriz de correlación
+
+1. **Pearson** (`"pearson"` — El estándar)
+    * **Qué mide:** La relación lineal exacta entre dos variables numéricas (qué tanto se ajustan los puntos a una línea recta).
+    * **Sensibilidad:** Es muy sensible a valores atípicos (*outliers*). Por ejemplo, en el Perú, Lima tiene una población y un PIB desproporcionadamente altos respecto al resto de departamentos, lo que puede "jalar" la correlación de Pearson hacia arriba.
+
+2. **Spearman** (`"spearman"` — Basado en rankings)
+    * **Qué mide:** La relación monótona (si una variable sube, la otra también sube, aunque no sea en línea recta perfecta). En lugar de usar los valores reales, ordena los datos del 1 al 25 (puestos/rankings) y calcula la correlación sobre esos puestos.
+    * **Cuándo usarlo:** Cuando tienes *outliers* fuertes (como Lima) o relaciones no lineales (ej. curvas exponenciales).
+
+3. **Kendall** (`"kendall"` — Concordancia de pares)
+    * **Qué mide:** Qué porcentaje de pares de observaciones van en la misma dirección frente a los que van en dirección opuesta.
+    * **Cuándo usarlo:** En muestras pequeñas (como los 24 departamentos más la Provincia Constitucional del Callao = 25 filas) o cuando hay muchos empates en los valores.
+
 
 ```{r}
 ## Definir la lista de columnas estrictamente numéricas seleccionadas
@@ -347,22 +361,28 @@ columnas_numericas <- c(
 
 ## Filtrar el DataFrame
 peru_numerico_filtrado <- peru_df %>% select(all_of(columnas_numericas))
-
-## 1. Calcular la matriz de correlación
-## Pearson ("pearson" — el estándar):
-## Qué mide: La relación lineal exacta entre dos variables numéricas (qué tanto se ajustan los puntos a una línea recta).
-## Sensibilidad: Es muy sensible a valores atípicos (outliers). Por ejemplo, en Perú, Lima tiene una población y un PIB desproporcionadamente altos respecto al resto de departamentos, lo que puede "jalar" la correlación de Pearson hacia arriba.
-
-## Spearman ("spearman" — basado en rankings):
-## Qué mide: La relación monótona (si una sube, la otra también sube, aunque no sea en línea recta perfecta). En lugar de usar los valores reales, ordena los datos del 1 al 25 (puestos/rankings) y calcula la correlación sobre esos puestos.
-## Cuándo usarlo: Cuando tienes outliers fuertes (como Lima) o relaciones curvas (ej. exponenciales).
-
-## Kendall ("kendall" — concordancia de pares):
-## Qué mide: Qué porcentaje de pares de observaciones van en la misma dirección frente a los que van en dirección opuesta.
-## Cuándo usarlo: En muestras pequeñas (como los 24 departamentos + Callao = 25 filas) o cuando hay muchos empates en los valores.
 matriz_correlacion <- cor(peru_numerico_filtrado, method = "pearson")
 round(matriz_correlacion, 2)
 ```
+
+### Prueba de hipótesis 
+
+Una prueba de hipótesis es el método formal que usa la estadística para tomar decisiones basadas en datos y saber si un patrón que observamos en una tabla es real o si ocurrió por pura casualidad.
+
+### Prueba de significancia estadística (Valor $p$ o *p-value*)
+
+1. **¿Qué evalúa?**
+    * **Qué responde:** Responde a la pregunta fundamental: *“¿Esta correlación que veo en mis 25 filas es un patrón real del fenómeno o pudo haber salido por pura casualidad?”*
+    * **El rol del azar:** Mide la probabilidad de que obtengas una correlación tan alta como la observada, asumiendo que en la realidad (en el total del país) no existiera ninguna relación entre ambas variables.
+
+2. **El umbral de decisión ($0.05$ o $5\%$)**
+    * **Si el *p-value* es menor a $0.05$:** Se concluye que la correlación es **estadísticamente significativa**. Esto significa que hay evidencia sólida y confiable de que la relación existe en el mundo real y no es producto del azar de la muestra.
+    * **Si el *p-value* es mayor o igual a $0.05$:** No hay suficiente evidencia estadística para asegurar que la relación sea real; los datos sugieren que la aparente asociación podría ser una simple coincidencia de la muestra.
+
+3. **Implementación práctica en R (`cor.test`)**
+    * **Ejecución de la prueba:** La función `cor.test(peru_df$'POBLACION (millones)', peru_df$PIB, method = "pearson")` realiza el cálculo completo y devuelve tanto el coeficiente como el *p-value*.
+    * **Extracción del valor:** Si solo necesitas aislar el número exacto del *p-value* para evaluaciones automatizadas o reportes limpios, puedes acceder directamente a él mediante la instrucción `resultado$p.value`.
+   
 
 ```{r}
 ## Prueba de significancia entre Población y PIB
@@ -376,6 +396,22 @@ resultado
 ## Si solo quieres extraer el número exacto del p-value:
 resultado$p.value
 ```
+### Prueba de Hipótesis (t-test para muestras independientes)
+
+1. **¿Qué evalúa?**
+      * **Qué responde:** Responde a la pregunta fundamental: *“¿La diferencia de riqueza (PIB) que observamos entre los departamentos de la Costa y de la Sierra es un patrón real del país, o es solo un producto del azar de la muestra?”*
+      * **Las hipótesis del juicio:**
+        * **Hipótesis Nula ($H_0$):** El PIB promedio de la Costa y de la Sierra es igual (cualquier diferencia es pura casualidad).
+        * **Hipótesis Alternativa ($H_1$):** El PIB promedio de la Costa y de la Sierra es verdaderamente diferente.
+
+2. **Preparación de los datos y ejecución (`scipy.stats`)**
+    * **Limpieza previa:** Líneas como `pib_costa = peru_df[peru_df["REGION"] == "Costa"]["PIB"].dropna()` aíslan los valores válidos de cada región, asegurando que los nulos no distorsionen los cálculos.
+    * **El cálculo (`ttest_ind`):** La función `stats.ttest_ind(pib_costa, pib_sierra, equal_var=False)` ejecuta la prueba t de Student (usando el ajuste de Welch con `equal_var=False`, ideal cuando las regiones tienen varianzas o tamaños de muestra distintos, como ocurre con la economía peruana).
+
+3. **Interpretación y toma de decisiones (Umbral $0.05$)**
+    * **Si el *p-value* es menor a $0.05$:** **Rechazamos la hipótesis nula ($H_0$)**. Concluimos que existe una diferencia estadísticamente significativa y real entre el PIB promedio de la Costa y de la Sierra.
+    * **Si el *p-value* es mayor o igual a $0.05$:** **No rechazamos la hipótesis nula**. No hay evidencia estadística suficiente para afirmar que los promedios sean distintos; la disparidad observada podría ser simple coincidencia.
+
 
 ```{r}
 ## 2. Pruebas de hipótesis (t-test para dos muestras independientes)
@@ -440,4 +476,409 @@ proyectos_df <- tibble(
 
 proyectos_df
 ```
+
+```{r}
+## Inner Join: Solo registros comunes entre ambos dataframes
+inner_df <- peru_df %>%
+  inner_join(proyectos_df, by = "DEPARTAMENTO")
+
+inner_df
+```
+
+```{r}
+## Left Join: Mantiene todos los registros de peru_df y añade los coincidentes de proyectos_df
+left_df <- peru_df %>%
+  left_join(proyectos_df, by = "DEPARTAMENTO")
+
+left_df
+```
+
+```{r}
+## Right Join: Mantiene todos los registros de proyectos_df y añade los coincidentes de peru_df
+right_df <- peru_df %>%
+  right_join(proyectos_df, by = "DEPARTAMENTO")
+
+right_df
+```
+```{r}
+## Full Outer Join: Mantiene absolutamente todos los registros de ambos dataframes, rellenando con NA donde no haya coincidencia
+outer_df <- peru_df %>%
+  full_join(proyectos_df, by = "DEPARTAMENTO")
+
+outer_df
+```
+### Concatenación Vertical y Horizontal
+
+Unión de DataFrames a lo largo de un eje sin utilizar claves.
+
+```{r}
+## Crear el dataframe de encargados
+encargados_df <- tibble(
+  RESPONSABLE = c(
+    "Ing. García",
+    "Dra. López",
+    "Ing. Torres",
+    "Lic. Ruiz",
+    "Ing. Salas",
+    "Eco. Benites"
+  ),
+  FECHA_INICIO = c("2024-01", "2023-11", "2024-03", "2023-06", "2024-05", "2024-08")
+)
+
+encargados_df
+```
+
+
+```{r}
+## Concatenación horizontal (equivalente a axis=1 en pandas)
+proyectos_extendido <- bind_cols(proyectos_df, encargados_df)
+
+proyectos_extendido
+```
+```{r}
+## Crear el dataframe con los nuevos registros
+nuevos_df <- tibble(
+  DEPARTAMENTO = c("Tacna", "Puno"),
+  `INVERSION (millones)` = c(450, 920)
+)
+
+nuevos_df
+```
+```{r}
+## Concatenación vertical (equivalente a pd.concat(..., axis=0).reset_index(drop=True))
+proyectos_final <- bind_rows(proyectos_df, nuevos_df)
+
+proyectos_final
+```
+### Exportación de Datos
+
+Garantizar la interoperabilidad guardando los datos procesados en varios formatos profesionales.
+
+```{r}
+## install.packages(c("writexl", "jsonlite"))
+```
+
+
+```{r}
+library(writexl)
+library(readr)
+library(jsonlite)
+```
+
+
+```{r}
+# 1. Exportar a Excel (.xlsx)
+write_xlsx(peru_df, "peru_df_final_from_R.xlsx")
+
+# 2. Exportar a CSV en UTF-8 (.csv)
+write_csv(peru_df, "peru_df_final_from_R.csv")
+
+# 3. Exportar a JSON con formato legible e ISO para fechas (.json)
+write_json(peru_df, "peru_df_final_from_R.json", pretty = TRUE, date_format = "ISO8601")
+
+# 4. Exportar a tabla HTML (.html)
+writeLines(knitr::kable(peru_df, format = "html"), "peru_df_final_from_R.html")
+
+print("¡Todos los archivos se exportaron exitosamente!")
+```
+## 🖼️ 5. Visualizaciones e Insights
+
+Comunicación de tendencias de datos a través de visualizaciones potentes pero limpias.
+
+### GRÁFICO 1: ¿Qué tan concentrado está el PIB entre los primeros 10 departamentos?
+
+```{r}
+top_10_pib <- peru_df %>%
+  slice_max(PIB, n = 10)
+
+ggplot(top_10_pib, aes(x = reorder(DEPARTAMENTO, -PIB), y = PIB)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Top 10 Departamentos por PIB",
+    x = "Departamento",
+    y = "PIB"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+library(ggplot2)
+library(forcats)
+
+top_10_pib <- peru_df[order(peru_df$PIB, decreasing = TRUE), ]
+top_10_pib <- top_10_pib[seq_len(min(10, nrow(top_10_pib))), ]
+top_10_pib$es_lima <- top_10_pib$DEPARTAMENTO == "Lima"
+top_10_pib$DEPARTAMENTO <- fct_reorder(top_10_pib$DEPARTAMENTO, top_10_pib$PIB)
+
+max_pib <- max(top_10_pib$PIB, na.rm = TRUE)
+
+ggplot(top_10_pib, aes(x = PIB, y = DEPARTAMENTO)) +
+  geom_segment(
+    aes(x = 0, xend = PIB, yend = DEPARTAMENTO, color = es_lima),
+    linewidth = 1.2,
+    show.legend = FALSE
+  ) +
+  geom_point(
+    aes(color = es_lima),
+    size = 3.8,
+    show.legend = FALSE
+  ) +
+  geom_text(
+    aes(
+      label = format(round(PIB, 1), big.mark = ",", nsmall = 1),
+      fontface = ifelse(es_lima, "bold", "plain")
+    ),
+    hjust = -0.15,
+    size = 3.5,
+    color = "#222222"
+  ) +
+  scale_color_manual(values = c("FALSE" = "#A6A6A6", "TRUE" = "#D95F02")) +
+  scale_x_continuous(limits = c(0, max_pib * 1.15), expand = expansion(mult = c(0, 0.02))) +
+  labs(
+    title = "Brecha económica: Lima frente al resto del Top 10 departamental",
+    x = NULL,
+    y = NULL
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 13.5, hjust = 0),
+    panel.grid = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(size = 11, color = "#222222")
+  )
+```
+### GRÁFICO 2: ¿Existe una relación clara entre la altitud y el PIB o los grupos están separados por región?
+
+```{r}
+ggplot(peru_df, aes(x = `ALTITUD (msnm)`, y = PIB, color = REGION)) +
+  geom_point(alpha = 0.6, size = 3.5) +
+  labs(
+    title = "Relación entre Altitud y PIB por Región",
+    x = "Altitud (msnm)",
+    y = "PIB",
+    color = "Región"
+  ) +
+  theme_minimal()
+```
+```{r}
+library(ggplot2)
+
+# 1. Paleta preatentiva: Costa en azul fuerte (foco), Sierra y Selva en grises (contexto)
+paleta_story <- c(
+  "Costa" = "#005A9C",
+  "Sierra" = "#8C8C8C",
+  "Selva" = "#C7C7C7"
+)
+
+# 2. Promedio nacional y subconjunto de departamentos destacados
+pib_promedio <- mean(peru_df$PIB, na.rm = TRUE)
+pib_label_fmt <- format(round(pib_promedio, 1), big.mark = ",", nsmall = 1)
+
+departamentos_destacados <- c("Lima", "Arequipa", "Cusco", "Pasco")
+df_destacados <- peru_df[peru_df$DEPARTAMENTO %in% departamentos_destacados, ]
+df_destacados$es_foco_texto <- df_destacados$DEPARTAMENTO %in% c("Lima", "Arequipa")
+df_destacados$es_costa <- df_destacados$REGION == "Costa"
+df_destacados$x_etiqueta <- df_destacados$`ALTITUD (msnm)` + ifelse(
+  df_destacados$DEPARTAMENTO == "Cusco", 70, 60
+)
+
+max_alt <- max(peru_df$`ALTITUD (msnm)`, na.rm = TRUE)
+max_pib <- max(peru_df$PIB, na.rm = TRUE)
+
+# 3. Gráfico de dispersión limpio con anotaciones
+ggplot(peru_df, aes(x = `ALTITUD (msnm)`, y = PIB)) +
+  geom_hline(
+    yintercept = pib_promedio,
+    color = "#666666",
+    linetype = "dashed",
+    linewidth = 0.6
+  ) +
+  annotate(
+    "label",
+    x = max_alt * 0.45,
+    y = pib_promedio + (max_pib * 0.03),
+    label = paste0("PIB promedio nacional (", pib_label_fmt, ")"),
+    hjust = 0.5,
+    size = 3.2,
+    fontface = "italic",
+    color = "#555555",
+    fill = "white",
+    label.size = 0,
+    alpha = 0.85
+  ) +
+  geom_point(
+    aes(fill = REGION),
+    shape = 21,
+    size = 3.6,
+    alpha = 0.85,
+    color = "white",
+    stroke = 0.7,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(values = paleta_story) +
+  geom_text(
+    data = df_destacados,
+    aes(
+      x = x_etiqueta,
+      y = PIB,
+      label = DEPARTAMENTO,
+      fontface = ifelse(es_foco_texto, "bold", "plain"),
+      color = es_costa
+    ),
+    hjust = 0,
+    vjust = 0.5,
+    size = 3.3,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(values = c("FALSE" = "#444444", "TRUE" = "#005A9C")) +
+  annotate(
+    "text",
+    x = max_alt * 0.38,
+    y = max_pib * 0.72,
+    label = paste0(
+      "Los departamentos de la Costa (azul), ubicados a baja altitud,\n",
+      "concentran los mayores niveles de PIB frente a la Sierra y Selva (grises)."
+    ),
+    hjust = 0,
+    size = 3.4,
+    fontface = "italic",
+    color = "#005A9C"
+  ) +
+  scale_x_continuous(limits = c(-150, max_alt * 1.15)) +
+  labs(
+    title = "A mayor altitud, el PIB departamental tiende a disminuir",
+    subtitle = "Relación entre Altitud (msnm) y PIB por región natural del Perú",
+    x = "Altitud (msnm)",
+    y = "PIB"
+  ) +
+  theme_classic(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 13.5, color = "#111111"),
+    plot.subtitle = element_text(size = 10.5, color = "#666666", margin = margin(b = 12)),
+    axis.line = element_line(color = "#CCCCCC"),
+    axis.ticks = element_line(color = "#CCCCCC"),
+    axis.text = element_text(color = "#444444"),
+    axis.title = element_text(color = "#444444"),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+```
+### GRAFICO 3: ¿Qué pares de variables muestran la relación lineal positiva o negativa más fuerte?
+
+```{r}
+# 1. Seleccionar columnas numéricas relevantes y calcular matriz de correlación
+columnas_numericas <- c(
+  "POBLACION (millones)",
+  "SUPERFICIE (km²)",
+  "PIB",
+  "ALTITUD (msnm)",
+  "DENSIDAD (hab/km²)"
+)
+
+datos_num <- peru_df[, columnas_numericas]
+cor_mat <- cor(datos_num, use = "complete.obs", method = "pearson")
+
+# 2. Transformar matriz a formato largo (long format) con R base
+vars <- colnames(cor_mat)
+df_heat <- data.frame(
+  Var1 = rep(vars, times = length(vars)),
+  Var2 = rep(vars, each = length(vars)),
+  Valor = as.vector(cor_mat),
+  stringsAsFactors = FALSE
+)
+
+# Mantener el orden original de filas (arriba hacia abajo) y columnas (izquierda a derecha)
+df_heat$Var1 <- factor(df_heat$Var1, levels = rev(vars))
+df_heat$Var2 <- factor(df_heat$Var2, levels = vars)
+df_heat$Etiqueta <- sprintf("%.2f", df_heat$Valor)
+
+# 3. Dibujar heatmap cuadrado con anotaciones y escala divergente centrada en 0
+ggplot(df_heat, aes(x = Var2, y = Var1, fill = Valor)) +
+  geom_tile(color = "white", linewidth = 0.8) +
+  geom_text(
+    aes(label = Etiqueta),
+    size = 3.8,
+    color = "#111111"
+  ) +
+  scale_fill_gradient2(
+    low = "#3B4CC0",
+    mid = "#F7F7F7",
+    high = "#B40426",
+    midpoint = 0,
+    limits = c(-1, 1),
+    name = "Correlación"
+  ) +
+  coord_fixed() +
+  labs(
+    title = "Matriz de Correlación entre Variables Económicas y Demográficas",
+    x = NULL,
+    y = NULL
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 13.5, hjust = 0.5),
+    panel.grid = element_blank(),
+    axis.text.x = element_text(angle = 35, hjust = 1, vjust = 1, color = "#222222"),
+    axis.text.y = element_text(color = "#222222"),
+    axis.ticks = element_blank(),
+    legend.key.height = unit(1.2, "cm")
+  )
+```
+
+### GRÁFICO 4: ¿Dónde se ubica la media (punto rojo) frente a la mediana (línea central de la caja) en cada región?
+
+```{r}
+ggplot(peru_df, aes(x = REGION, y = PIB, fill = REGION)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 19, outlier.size = 2) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 21,
+    size = 3.5,
+    fill = "red",
+    color = "red"
+  ) +
+  scale_fill_brewer(palette = "Pastel1") +
+  labs(
+    title = "PIB por Región (con media en rojo)",
+    x = "Región",
+    y = "PIB"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 13.5),
+    legend.position = "none"
+  )
+```
+### GRAFICO 5: ¿Qué proporción del peso demográfico recae en los 10 primeros departamentos del ranking?
+
+```{r}
+# 1. Seleccionar Top 10 por población y ordenar de mayor a menor
+ord_pob <- order(peru_df$`POBLACION (millones)`, decreasing = TRUE)
+top_10_pob <- peru_df[ord_pob[seq_len(min(10, nrow(peru_df)))], ]
+top_10_pob$DEPARTAMENTO <- factor(
+  top_10_pob$DEPARTAMENTO,
+  levels = top_10_pob$DEPARTAMENTO
+)
+
+# 2. Gráfico de barras
+ggplot(top_10_pob, aes(x = DEPARTAMENTO, y = `POBLACION (millones)`)) +
+  geom_col(fill = "purple") +
+  labs(
+    title = "Top 10 Departamentos por Población",
+    x = "Departamento",
+    y = "Población (millones)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  )
+```
+
+
+
+
+
+
 
